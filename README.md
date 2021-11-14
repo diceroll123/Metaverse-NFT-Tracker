@@ -23,25 +23,25 @@ A simple script that spits out a spreadsheet after harvesting all transactions f
 Clone the project
 
 ```bash
-  git clone https://github.com/diceroll123/Metaverse-NFT-Tracker
+git clone https://github.com/diceroll123/Metaverse-NFT-Tracker
 ```
 
 Go to the project directory
 
 ```bash
-  cd Metaverse-NFT-Tracker
+cd Metaverse-NFT-Tracker
 ```
 
 Install dependencies
 
 ```bash
-  pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
 Start the script
 
 ```bash
-  python tracker.py
+python tracker.py
 ```
 
 If everything went well, after caching everything you'll find a `Metaverse_Purchases.xls` file in the folder.
