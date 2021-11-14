@@ -1,1 +1,3 @@
 solana
+pyexcel
+pyexcel-xls

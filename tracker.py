@@ -1,11 +1,13 @@
 import asyncio
+import datetime
 import functools
 import json
 import time
 from pathlib import Path
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional, OrderedDict
 
 import httpx
+import pyexcel  # type: ignore
 from solana.rpc.async_api import AsyncClient
 from solana.rpc.types import RPCResponse
 
@@ -107,6 +109,11 @@ async def fetch_all_signatures(client: AsyncClient) -> List[str]:
     return signatures
 
 
+@run_in_executor
+def export_to_spreadsheet(data: List[Dict[str, Any]]) -> None:
+    pyexcel.save_as(records=data, dest_file_name="Metaverse_Purchases.xls")  # type: ignore
+
+
 async def main() -> None:
     async with AsyncClient("https://api.mainnet-beta.solana.com") as client:
 
@@ -127,6 +134,83 @@ async def main() -> None:
         print(
             f"New Transactions cached: {newly_cached:,} (Took {end_time - start_time} seconds)"
         )
+
+    # create spreadsheet
+    sheet_data: List[Dict[str, Any]] = []
+    for signature in signatures[::-1]:  # start from the oldest signature
+        transaction = await get_transaction(signature)
+
+        # first, we gather the interesting parts of the data
+
+        # the payload
+        result: Dict[str, Any] = transaction["result"]
+
+        # metadata of the transaction (the good stuff)
+        meta: Dict[str, Any] = result["meta"]
+
+        # let's skip any errored transactions
+        if meta["err"] is not None:
+            continue
+
+        # unix timestamp of the block's confirmation
+        block_time: int = result["blockTime"]
+
+        # metadata of the transaction (the good stuff)
+        meta: Dict[str, Any] = result["meta"]
+
+        # post-transaction token balances
+        post_token_balances: List[Dict[str, Any]] = meta["postTokenBalances"]
+
+        # pre-transaction token balances
+        # if the buyer has never purchased this token before, it will be an empty list
+        pre_token_balances: List[Dict[str, Any]] = meta["preTokenBalances"]
+
+        # all addresses involved in the transaction
+        account_keys: List[str] = result["transaction"]["message"]["accountKeys"]
+
+        # the address of the account doing the purchase
+        purchaser_address = account_keys[0]
+
+        # the index of the metaverse wallet in this transaction, to track the income
+        metaverse_wallet_index = account_keys.index(METAVERSE_WALLET_ADDRESS)
+
+        # a list of the balances of the addresses involved in the transaction, before the transaction goes through
+        pre_txn_balances: List[int] = meta["preBalances"]
+
+        # a list of the balances of the addresses involved in the transaction, after the transaction goes through
+        post_txn_balances: List[int] = meta["postBalances"]
+
+        ##########
+
+        # add to sheet data
+        data: OrderedDict[str, Any] = OrderedDict({})
+        data["Timestamp"] = datetime.datetime.fromtimestamp(block_time)
+        data["Buyer"] = purchaser_address
+
+        bought = 0
+        post_token_balance = int(
+            post_token_balances[0]["uiTokenAmount"]["uiAmountString"]
+        )
+        if len(pre_token_balances):
+            before = int(pre_token_balances[0]["uiTokenAmount"]["uiAmountString"])
+            bought = post_token_balance - before
+        else:
+            bought = post_token_balance
+
+        data["Tokens Bought"] = bought
+
+        data["Buyer's Token Count"] = post_token_balance
+
+        data["$SOL Spent"] = (
+            post_txn_balances[metaverse_wallet_index]
+            - pre_txn_balances[metaverse_wallet_index]
+        ) / ONE_SOL_IN_LAMPERTS
+
+        data["Txn Signature"] = signature
+
+        sheet_data.append(data)
+
+    await export_to_spreadsheet(sheet_data)
 
 
 if __name__ == "__main__":
