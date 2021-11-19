@@ -14,17 +14,17 @@ from solana.rpc.types import RPCResponse
 # Where the Solana goes
 METAVERSE_WALLET_ADDRESS = "Fwdp7bSAA1G4EsDn6DCkAuKSBRAJp7BjHutQptzQtzUG"
 
-ONE_SOL_IN_LAMPERTS = 1_000_000_000  # Solana's version of Bitcoin's "Satoshi"
+ONE_SOL_IN_LAMPORTS = 1_000_000_000  # Solana's version of Bitcoin's "Satoshi"
 
 SIGNATURE_FOLDER = Path("./signatures")
 
-if SIGNATURE_FOLDER.exists() is False:
+if not SIGNATURE_FOLDER.exists():
     SIGNATURE_FOLDER.mkdir()
 
 
-def json_file(signature: str) -> Path:
+def json_file(signature: str, folder: Path = SIGNATURE_FOLDER) -> Path:
     """Returns the Path object for a transaction of a given signature."""
-    return SIGNATURE_FOLDER / (signature + ".json")
+    return folder / (signature + ".json")
 
 
 def run_in_executor(func: Callable[..., Any]):
@@ -40,29 +40,34 @@ def run_in_executor(func: Callable[..., Any]):
 
 
 @run_in_executor
-def is_cached(signature: str) -> bool:
+def is_cached(signature: str, folder: Path = SIGNATURE_FOLDER) -> bool:
     """Returns whether or not a transaction of a given signature has been cached."""
 
-    return json_file(signature).exists()
+    return json_file(signature, folder).exists()
 
 
 @run_in_executor
-def get_transaction(signature: str) -> RPCResponse:
+def get_transaction(signature: str,
+                    folder: Path = SIGNATURE_FOLDER) -> RPCResponse:
     """Returns the transaction data of a given signature."""
 
-    with open(json_file(signature), "r") as f:
+    with open(json_file(signature, folder), "r") as f:
         return json.loads(f.read())
 
 
 @run_in_executor
-def cache_transaction(signature: str, data: RPCResponse) -> None:
+def cache_transaction(signature: str,
+                      data: RPCResponse,
+                      folder: Path = SIGNATURE_FOLDER) -> None:
     """Write the transaction data to our local cache."""
 
-    with open(json_file(signature), "w") as f:
+    with open(json_file(signature, folder), "w") as f:
         f.write(json.dumps(data, indent=4))  # pretty printed
 
 
-async def fetch_transaction(client: AsyncClient, signature: str) -> RPCResponse:
+async def fetch_transaction(client: AsyncClient,
+                            signature: str,
+                            folder: Path = SIGNATURE_FOLDER) -> RPCResponse:
     """Will fetch the transaction data from Solana, cache it, and then return the data"""
 
     try:
@@ -76,12 +81,14 @@ async def fetch_transaction(client: AsyncClient, signature: str) -> RPCResponse:
         await asyncio.sleep(11)
         transaction = await client.get_confirmed_transaction(signature)
 
-    await cache_transaction(signature, transaction)
+    await cache_transaction(signature, transaction, folder)
 
     return transaction
 
 
-async def fetch_all_signatures(client: AsyncClient) -> List[str]:
+async def fetch_all_signatures(client: AsyncClient,
+                               signature: str = METAVERSE_WALLET_ADDRESS,
+                               earliest_time=float("-inf")) -> List[str]:
     """Grabs all signatures of transactions that includes the Metaverse Wallet's address.
     If the Metaverse address was at all in a transaction, it will be here.
     """
@@ -93,25 +100,25 @@ async def fetch_all_signatures(client: AsyncClient) -> List[str]:
 
     while True:
         data = await client.get_signatures_for_address(
-            METAVERSE_WALLET_ADDRESS, before=before
+            signature, before=before
         )
 
-        result = data["result"]  # type: ignore
+        result = [txn for txn in data["result"]
+                  if txn["blockTime"] >= earliest_time]  # type: ignore
         if len(result) == 0:
             # we hit the end!
-            break
+            return signatures
 
         for transaction in result:
             signatures.append(transaction["signature"])
 
         before = signatures[-1]
 
-    return signatures
-
 
 @run_in_executor
-def export_to_spreadsheet(data: List[Dict[str, Any]]) -> None:
-    pyexcel.save_as(records=data, dest_file_name="Metaverse_Purchases.xls")  # type: ignore
+def export_to_spreadsheet(data: List[Dict[str, Any]],
+                          dest_file_name: str = "Metaverse_Purchases.xls") -> None:
+    pyexcel.save_as(records=data, dest_file_name=dest_file_name)  # type: ignore
 
 
 async def main() -> None:
@@ -155,9 +162,6 @@ async def main() -> None:
         # unix timestamp of the block's confirmation
         block_time: int = result["blockTime"]
 
-        # metadata of the transaction (the good stuff)
-        meta: Dict[str, Any] = result["meta"]
-
         # post-transaction token balances
         post_token_balances: List[Dict[str, Any]] = meta["postTokenBalances"]
 
@@ -191,7 +195,7 @@ async def main() -> None:
         post_token_balance = int(
             post_token_balances[0]["uiTokenAmount"]["uiAmountString"]
         )
-        if len(pre_token_balances):
+        if pre_token_balances:
             before = int(pre_token_balances[0]["uiTokenAmount"]["uiAmountString"])
             bought = post_token_balance - before
         else:
@@ -204,7 +208,7 @@ async def main() -> None:
         data["$SOL Spent"] = (
             post_txn_balances[metaverse_wallet_index]
             - pre_txn_balances[metaverse_wallet_index]
-        ) / ONE_SOL_IN_LAMPERTS
+        ) / ONE_SOL_IN_LAMPORTS
 
         data["Txn Signature"] = signature
 
