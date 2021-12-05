@@ -6,7 +6,7 @@ A simple script that spits out a spreadsheet after harvesting all transactions f
 
 ## Interesting Tidbits
 
-- 4 tokens were sold the day before launch to a [mystery account](7NnczUGzrxF2yeswUyKSYbKLjihxo7Nt5xP9syir3M13)
+- 4 tokens were sold the day before launch to a [mystery account](https://explorer.solana.com/address/7NnczUGzrxF2yeswUyKSYbKLjihxo7Nt5xP9syir3M13)
   - this used up 4 of the 250 tokens that would be sold at 1.0 SOL
   - below, this will be annotated as an italic `+number` to include it in stats while still separating it from regular launch-day purchases
 - Exactly 1000 tokens were sold before the official launch time. *+4*
